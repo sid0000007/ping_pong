@@ -1,7 +1,6 @@
-# main.py
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, Set, Optional
+from typing import Dict, Set
 from dataclasses import dataclass
 import json
 import random
@@ -71,6 +70,68 @@ class GameState:
 game_rooms: Dict[str, GameState] = {}
 connections: Dict[str, Dict[str, WebSocket]] = {}
 
+async def broadcast_game_state(room_id: str):
+    if room_id in game_rooms and room_id in connections:
+        game_state = game_rooms[room_id]
+        state_data = {
+            "type": "game_state",
+            "state": game_state.to_dict()
+        }
+        
+        for connection in connections[room_id].values():
+            try:
+                await connection.send_json(state_data)
+            except:
+                continue
+
+async def game_loop(room_id: str):
+    game_state = game_rooms[room_id]
+    
+    while room_id in game_rooms:
+        if game_state.is_active:
+            # Update ball position
+            game_state.ball["x"] += game_state.ball["dx"]
+            game_state.ball["y"] += game_state.ball["dy"]
+            
+            # Ball collision with top and bottom walls
+            if game_state.ball["y"] <= 0 or game_state.ball["y"] >= game_state.CANVAS_HEIGHT:
+                game_state.ball["dy"] *= -1
+            
+            # Ball collision with paddles
+            for player, paddle in game_state.paddles.items():
+                if (abs(game_state.ball["x"] - paddle["x"]) < game_state.PADDLE_WIDTH and
+                    paddle["y"] <= game_state.ball["y"] <= paddle["y"] + game_state.PADDLE_HEIGHT):
+                    game_state.ball["dx"] *= -1
+            
+            # Ball collision with obstacles
+            for obstacle in game_state.obstacles:
+                if (abs(game_state.ball["x"] - obstacle["x"]) < obstacle["size"] and
+                    abs(game_state.ball["y"] - obstacle["y"]) < obstacle["size"]):
+                    game_state.ball["dx"] *= -1
+                    game_state.ball["dy"] *= -1
+            
+            # Scoring
+            if game_state.ball["x"] <= 0:
+                game_state.scores["player2"] += 1
+                game_state.ball = {
+                    "x": game_state.CANVAS_WIDTH // 2,
+                    "y": game_state.CANVAS_HEIGHT // 2,
+                    "dx": 5,
+                    "dy": 5
+                }
+            elif game_state.ball["x"] >= game_state.CANVAS_WIDTH:
+                game_state.scores["player1"] += 1
+                game_state.ball = {
+                    "x": game_state.CANVAS_WIDTH // 2,
+                    "y": game_state.CANVAS_HEIGHT // 2,
+                    "dx": -5,
+                    "dy": 5
+                }
+            
+            await broadcast_game_state(room_id)
+        
+        await asyncio.sleep(1/60)  # 60 FPS
+
 @app.websocket("/ws/{room_id}/{player_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str):
     await websocket.accept()
@@ -119,44 +180,6 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str)
                 
     except WebSocketDisconnect:
         print(f"Player {player_id} disconnected from room {room_id}")
-    await websocket.accept()
-    
-    # Create new game room if it doesn't exist
-    if room_id not in game_rooms:
-        game_rooms[room_id] = GameState(room_id)
-        connections[room_id] = {}
-    
-    game_state = game_rooms[room_id]
-    
-    try:
-        # Add player to the game
-        game_state.players.add(player_id)
-        connections[room_id][player_id] = websocket
-        
-        # Start game if two players are connected
-        if len(game_state.players) == 2:
-            game_state.is_active = True
-            
-        # Broadcast initial state
-        await broadcast_game_state(room_id)
-        
-        while True:
-            data = await websocket.receive_json()
-            
-            if data["type"] == "paddle_move":
-                player = data["player"]
-                new_y = data["y"]
-                
-                # Validate paddle movement
-                if 0 <= new_y <= game_state.CANVAS_HEIGHT - game_state.PADDLE_HEIGHT:
-                    game_state.paddles[player]["y"] = new_y
-                    await broadcast_game_state(room_id)
-                    
-            elif data["type"] == "start_game":
-                game_state.is_active = True
-                await broadcast_game_state(room_id)
-                
-    except WebSocketDisconnect:
         # Handle disconnection
         game_state.players.remove(player_id)
         connections[room_id].pop(player_id, None)
@@ -168,69 +191,6 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str)
             connections.pop(room_id, None)
         else:
             await broadcast_game_state(room_id)
-
-async def broadcast_game_state(room_id: str):
-    if room_id in game_rooms and room_id in connections:
-        game_state = game_rooms[room_id]
-        state_data = {
-            "type": "game_state",
-            "state": game_state.to_dict()
-        }
-        
-        for connection in connections[room_id].values():
-            try:
-                await connection.send_json(state_data)
-            except:
-                continue
-
-# Game loop for ball movement and collision detection
-async def game_loop(room_id: str):
-    game_state = game_rooms[room_id]
-    
-    while room_id in game_rooms:
-        if game_state.is_active:
-            # Update ball position
-            game_state.ball["x"] += game_state.ball["dx"]
-            game_state.ball["y"] += game_state.ball["dy"]
-            
-            # Ball collision with top and bottom walls
-            if game_state.ball["y"] <= 0 or game_state.ball["y"] >= game_state.CANVAS_HEIGHT:
-                game_state.ball["dy"] *= -1
-            
-            # Ball collision with paddles
-            for player, paddle in game_state.paddles.items():
-                if (abs(game_state.ball["x"] - paddle["x"]) < game_state.PADDLE_WIDTH and
-                    paddle["y"] <= game_state.ball["y"] <= paddle["y"] + game_state.PADDLE_HEIGHT):
-                    game_state.ball["dx"] *= -1
-            
-            # Ball collision with obstacles
-            for obstacle in game_state.obstacles:
-                if (abs(game_state.ball["x"] - obstacle["x"]) < obstacle["size"] and
-                    abs(game_state.ball["y"] - obstacle["y"]) < obstacle["size"]):
-                    game_state.ball["dx"] *= -1
-                    game_state.ball["dy"] *= -1
-            
-            # Scoring
-            if game_state.ball["x"] <= 0:
-                game_state.scores["player2"] += 1
-                game_state.ball = {
-                    "x": game_state.CANVAS_WIDTH // 2,
-                    "y": game_state.CANVAS_HEIGHT // 2,
-                    "dx": 5,
-                    "dy": 5
-                }
-            elif game_state.ball["x"] >= game_state.CANVAS_WIDTH:
-                game_state.scores["player1"] += 1
-                game_state.ball = {
-                    "x": game_state.CANVAS_WIDTH // 2,
-                    "y": game_state.CANVAS_HEIGHT // 2,
-                    "dx": -5,
-                    "dy": 5
-                }
-            
-            await broadcast_game_state(room_id)
-        
-        await asyncio.sleep(1/60)  # 60 FPS
 
 @app.on_event("startup")
 async def startup_event():

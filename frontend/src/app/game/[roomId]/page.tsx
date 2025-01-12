@@ -1,4 +1,3 @@
-// // app/game/[roomId]/page.tsx
 // "use client";
 
 // import { useEffect, useRef, useState } from "react";
@@ -38,24 +37,93 @@
 //   const [gameState, setGameState] = useState<GameState | null>(null);
 //   const [playerId, setPlayerId] = useState<string>("");
 //   const [isConnected, setIsConnected] = useState(false);
+//   const [currentPlayer, setCurrentPlayer] = useState<
+//     "player1" | "player2" | null
+//   >(null);
 
 //   // Constants
 //   const CANVAS_WIDTH = 800;
 //   const CANVAS_HEIGHT = 600;
 //   const PADDLE_HEIGHT = 100;
 //   const PADDLE_WIDTH = 20;
+//   const MOVE_AMOUNT = 20;
 
-//   const [paddleY, setPaddleY] = useState(CANVAS_HEIGHT / 2);
+//   // Add refs with proper type initialization
+//   const keysPressedRef = useRef<{ [key: string]: boolean }>({});
+//   const paddleYRef = useRef<number>(CANVAS_HEIGHT / 2);
+//   const animationFrameRef = useRef<number | null>(null);
 
 //   useEffect(() => {
-//     // Generate a random player ID
 //     setPlayerId(`player_${Math.random().toString(36).substr(2, 9)}`);
 //   }, []);
 
 //   useEffect(() => {
+//     console.log("Player state updated:", {
+//       playerId,
+//       currentPlayer,
+//       isConnected,
+//       playerCount: gameState?.players.length,
+//     });
+//   }, [playerId, currentPlayer, isConnected, gameState?.players.length]);
+
+//   const updatePaddlePosition = () => {
+//     if (
+//       !wsRef.current ||
+//       !currentPlayer ||
+//       wsRef.current.readyState !== WebSocket.OPEN
+//     ) {
+//       console.log("UpdatePaddlePosition: Not ready", {
+//         ws: !!wsRef.current,
+//         wsState: wsRef.current?.readyState,
+//         currentPlayer,
+//         paddleY: paddleYRef.current,
+//       });
+//       return;
+//     }
+
+//     let newY = paddleYRef.current;
+//     let moved = false;
+
+//     if (keysPressedRef.current["ArrowUp"]) {
+//       newY = Math.max(0, newY - MOVE_AMOUNT);
+//       moved = true;
+//       console.log("Moving paddle up to:", newY);
+//     }
+//     if (keysPressedRef.current["ArrowDown"]) {
+//       newY = Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, newY + MOVE_AMOUNT);
+//       moved = true;
+//       console.log("Moving paddle down to:", newY);
+//     }
+
+//     if (moved) {
+//       paddleYRef.current = newY;
+//       const message = {
+//         type: "paddle_move",
+//         player: currentPlayer,
+//         y: newY,
+//       };
+//       console.log("Sending paddle move message:", message);
+//       wsRef.current.send(JSON.stringify(message));
+//     }
+
+//     animationFrameRef.current =
+//       window.requestAnimationFrame(updatePaddlePosition);
+//   };
+
+//   useEffect(() => {
+//     if (!playerId) {
+//       const generatedPlayerId = `player_${Math.random()
+//         .toString(36)
+//         .substr(2, 9)}`;
+//       console.log("Generated new player ID:", generatedPlayerId);
+//       setPlayerId(generatedPlayerId);
+//     }
+//   }, [playerId]);
+
+//   useEffect(() => {
 //     if (!playerId) return;
 
-//     // Connect to WebSocket
+//     console.log("Connecting WebSocket with playerId:", playerId);
 //     const ws = new WebSocket(`ws://localhost:8000/ws/${roomId}/${playerId}`);
 //     wsRef.current = ws;
 
@@ -66,80 +134,113 @@
 
 //     ws.onmessage = (event) => {
 //       const data = JSON.parse(event.data);
+//       console.log("Received WebSocket message:", data);
+
 //       if (data.type === "game_state") {
 //         setGameState(data.state);
-//         // Update local paddle position if we're player 2
-//         if (playerId === data.state.players[1]) {
-//           setPaddleY(data.state.paddles.player2.y);
-//         } else if (playerId === data.state.players[0]) {
-//           setPaddleY(data.state.paddles.player1.y);
+
+//         // Update player role and paddle position
+//         const playerIndex = data.state.players.indexOf(playerId);
+//         console.log("Player index in game state:", playerIndex);
+
+//         if (playerIndex === 0) {
+//           console.log("Setting as player1");
+//           setCurrentPlayer("player1");
+//           paddleYRef.current = data.state.paddles.player1.y;
+//         } else if (playerIndex === 1) {
+//           console.log("Setting as player2");
+//           setCurrentPlayer("player2");
+//           paddleYRef.current = data.state.paddles.player2.y;
+//         } else {
+//           console.log("Player not found in game state players array");
 //         }
 //       }
 //     };
 
-//     // Handle keyboard input
-//     const handleKeyDown = (e: KeyboardEvent) => {
-//       if (!wsRef.current || !gameState) return;
-
-//       let newY = paddleY;
-//       const moveAmount = 20;
-
-//       if (e.key === "ArrowUp") {
-//         newY = Math.max(0, paddleY - moveAmount);
-//         setPaddleY(newY);
-//       } else if (e.key === "ArrowDown") {
-//         newY = Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, paddleY + moveAmount);
-//         setPaddleY(newY);
-//       } else {
-//         return; // Don't send update for other keys
-//       }
-
-//       const player = gameState.players[0] === playerId ? "player1" : "player2";
-//       console.log(`Sending paddle move: ${player} to ${newY}`); // Debug log
-
-//       wsRef.current.send(
-//         JSON.stringify({
-//           type: "paddle_move",
-//           player,
-//           y: newY,
-//         })
-//       );
+//     ws.onerror = (error) => {
+//       console.error("WebSocket error:", error);
+//       setIsConnected(false);
 //     };
 
-//     // Add both keydown and keyup event listeners
+//     ws.onclose = () => {
+//       console.log("WebSocket connection closed");
+//       setIsConnected(false);
+//     };
+
+//     const handleKeyDown = (e: KeyboardEvent) => {
+//       if ((e.key === "ArrowUp" || e.key === "ArrowDown") && currentPlayer) {
+//         e.preventDefault();
+//         keysPressedRef.current[e.key] = true;
+//         console.log("Key down:", e.key, "Current player:", currentPlayer);
+
+//         if (!animationFrameRef.current) {
+//           console.log("Starting animation frame");
+//           animationFrameRef.current =
+//             window.requestAnimationFrame(updatePaddlePosition);
+//         }
+//       }
+//     };
+
+//     const handleKeyUp = (e: KeyboardEvent) => {
+//       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+//         e.preventDefault();
+//         keysPressedRef.current[e.key] = false;
+//         console.log("Key up:", e.key, "Keys pressed:", keysPressedRef.current);
+
+//         if (
+//           !keysPressedRef.current["ArrowUp"] &&
+//           !keysPressedRef.current["ArrowDown"]
+//         ) {
+//           if (animationFrameRef.current) {
+//             console.log("Canceling animation frame");
+//             window.cancelAnimationFrame(animationFrameRef.current);
+//             animationFrameRef.current = null;
+//           }
+//         }
+//       }
+//     };
+
 //     window.addEventListener("keydown", handleKeyDown);
+//     window.addEventListener("keyup", handleKeyUp);
 
 //     return () => {
+//       console.log("Cleaning up WebSocket and event listeners");
 //       ws.close();
 //       window.removeEventListener("keydown", handleKeyDown);
+//       window.removeEventListener("keyup", handleKeyUp);
+//       if (animationFrameRef.current !== null) {
+//         window.cancelAnimationFrame(animationFrameRef.current);
+//         animationFrameRef.current = null;
+//       }
 //     };
-//   }, [playerId, roomId, paddleY]); // Add paddleY to dependencies
+//   }, [playerId, roomId]);
 
-//   // Update the canvas rendering
+//   useEffect(() => {
+//     if (canvasRef.current) {
+//       canvasRef.current.focus();
+//     }
+//   }, []);
+
 //   useEffect(() => {
 //     if (!canvasRef.current || !gameState) return;
 
 //     const ctx = canvasRef.current.getContext("2d");
 //     if (!ctx) return;
 
-//     // Clear canvas
 //     ctx.fillStyle = "#000";
 //     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-//     // Draw paddles
 //     ctx.fillStyle = "#fff";
 //     Object.values(gameState.paddles).forEach((paddle) => {
 //       ctx.fillRect(paddle.x, paddle.y, PADDLE_WIDTH, PADDLE_HEIGHT);
 //     });
 
-//     // Draw ball
 //     if (gameState.ball) {
 //       ctx.beginPath();
 //       ctx.arc(gameState.ball.x, gameState.ball.y, 10, 0, Math.PI * 2);
 //       ctx.fill();
 //     }
 
-//     // Draw obstacles
 //     ctx.fillStyle = "#ff4444";
 //     gameState.obstacles.forEach((obstacle) => {
 //       ctx.fillRect(
@@ -164,13 +265,22 @@
 //               </div>
 //             )}
 //           </div>
+//           <div className="text-sm">
+//             {currentPlayer && <div>You are: {currentPlayer}</div>}
+//           </div>
 //         </div>
 
 //         <canvas
 //           ref={canvasRef}
 //           width={CANVAS_WIDTH}
 //           height={CANVAS_HEIGHT}
-//           className="border border-gray-600 bg-black"
+//           className="border border-gray-600 bg-black focus:outline-none"
+//           tabIndex={0}
+//           onKeyDown={(e) => e.preventDefault()} // Prevent default browser scrolling
+//           onClick={() => {
+//             canvasRef.current?.focus();
+//             console.log("Canvas focused");
+//           }}
 //         />
 
 //         <div className="mt-4 text-center">
@@ -236,6 +346,9 @@ export default function Game() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [playerId, setPlayerId] = useState<string>("");
   const [isConnected, setIsConnected] = useState(false);
+  const [currentPlayer, setCurrentPlayer] = useState<
+    "player1" | "player2" | null
+  >(null);
 
   // Constants
   const CANVAS_WIDTH = 800;
@@ -244,44 +357,100 @@ export default function Game() {
   const PADDLE_WIDTH = 20;
   const MOVE_AMOUNT = 20;
 
-  // Add refs with proper type initialization
   const keysPressedRef = useRef<{ [key: string]: boolean }>({});
-  const paddleYRef = useRef<number>(CANVAS_HEIGHT / 2);
   const animationFrameRef = useRef<number | null>(null);
+  const currentPaddlePosition = useRef<number>(CANVAS_HEIGHT / 2);
+  const touchStartYRef = useRef<number | null>(null);
+  const lastTouchYRef = useRef<number | null>(null);
 
   useEffect(() => {
-    setPlayerId(`player_${Math.random().toString(36).substr(2, 9)}`);
-  }, []);
+    if (!playerId) {
+      setPlayerId(`player_${Math.random().toString(36).substr(2, 9)}`);
+    }
+  }, [playerId]);
 
-  // Handle continuous paddle movement
-  const updatePaddlePosition = () => {
-    if (!wsRef.current || !gameState) return;
+  const updatePaddlePosition = (newY: number) => {
+    if (
+      !wsRef.current ||
+      !currentPlayer ||
+      wsRef.current.readyState !== WebSocket.OPEN
+    ) {
+      return;
+    }
 
-    let newY = paddleYRef.current;
+    // Ensure paddle stays within canvas bounds
+    newY = Math.max(0, Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, newY));
+
+    if (newY !== currentPaddlePosition.current) {
+      currentPaddlePosition.current = newY;
+      const message = {
+        type: "paddle_move",
+        player: currentPlayer,
+        y: newY,
+      };
+      wsRef.current.send(JSON.stringify(message));
+    }
+  };
+
+  const handleKeyboardMovement = () => {
+    let newY = currentPaddlePosition.current;
+    let moved = false;
 
     if (keysPressedRef.current["ArrowUp"]) {
       newY = Math.max(0, newY - MOVE_AMOUNT);
+      moved = true;
     }
     if (keysPressedRef.current["ArrowDown"]) {
       newY = Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, newY + MOVE_AMOUNT);
+      moved = true;
     }
 
-    if (newY !== paddleYRef.current) {
-      paddleYRef.current = newY;
-      const player = gameState.players[0] === playerId ? "player1" : "player2";
-
-      wsRef.current.send(
-        JSON.stringify({
-          type: "paddle_move",
-          player,
-          y: newY,
-        })
-      );
+    if (moved) {
+      updatePaddlePosition(newY);
     }
 
-    // Store the animation frame ID
-    animationFrameRef.current =
-      window.requestAnimationFrame(updatePaddlePosition);
+    animationFrameRef.current = window.requestAnimationFrame(
+      handleKeyboardMovement
+    );
+  };
+
+  // Touch event handlers
+  const handleTouchStart = (e: TouchEvent) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleY = CANVAS_HEIGHT / rect.height;
+    touchStartYRef.current = (touch.clientY - rect.top) * scaleY;
+    lastTouchYRef.current = currentPaddlePosition.current;
+  };
+
+  const handleTouchMove = (e: TouchEvent) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const canvas = canvasRef.current;
+    if (
+      !canvas ||
+      touchStartYRef.current === null ||
+      lastTouchYRef.current === null
+    )
+      return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleY = CANVAS_HEIGHT / rect.height;
+    const currentTouchY = (touch.clientY - rect.top) * scaleY;
+    const deltaY = currentTouchY - touchStartYRef.current;
+
+    const newY = lastTouchYRef.current + deltaY;
+    updatePaddlePosition(newY);
+  };
+
+  const handleTouchEnd = (e: TouchEvent) => {
+    e.preventDefault();
+    touchStartYRef.current = null;
+    lastTouchYRef.current = null;
   };
 
   useEffect(() => {
@@ -292,30 +461,44 @@ export default function Game() {
 
     ws.onopen = () => {
       setIsConnected(true);
-      console.log("Connected to game server");
     };
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
+
       if (data.type === "game_state") {
         setGameState(data.state);
-        // Update paddle position reference
-        if (playerId === data.state.players[1]) {
-          paddleYRef.current = data.state.paddles.player2.y;
-        } else if (playerId === data.state.players[0]) {
-          paddleYRef.current = data.state.paddles.player1.y;
+
+        const playerIndex = data.state.players.indexOf(playerId);
+
+        if (playerIndex === 0) {
+          setCurrentPlayer("player1");
+          currentPaddlePosition.current = data.state.paddles.player1.y;
+        } else if (playerIndex === 1) {
+          setCurrentPlayer("player2");
+          currentPaddlePosition.current = data.state.paddles.player2.y;
         }
       }
     };
 
-    // Handle keyboard events
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      setIsConnected(false);
+    };
+
+    ws.onclose = () => {
+      setIsConnected(false);
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-        e.preventDefault(); // Prevent page scrolling
+      if ((e.key === "ArrowUp" || e.key === "ArrowDown") && currentPlayer) {
+        e.preventDefault();
         keysPressedRef.current[e.key] = true;
+
         if (!animationFrameRef.current) {
-          animationFrameRef.current =
-            window.requestAnimationFrame(updatePaddlePosition);
+          animationFrameRef.current = window.requestAnimationFrame(
+            handleKeyboardMovement
+          );
         }
       }
     };
@@ -324,7 +507,7 @@ export default function Game() {
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         e.preventDefault();
         keysPressedRef.current[e.key] = false;
-        // If no keys are pressed, cancel the animation frame
+
         if (
           !keysPressedRef.current["ArrowUp"] &&
           !keysPressedRef.current["ArrowDown"]
@@ -337,6 +520,13 @@ export default function Game() {
       }
     };
 
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.addEventListener("touchstart", handleTouchStart);
+      canvas.addEventListener("touchmove", handleTouchMove);
+      canvas.addEventListener("touchend", handleTouchEnd);
+    }
+
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
 
@@ -344,9 +534,13 @@ export default function Game() {
       ws.close();
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+      if (canvas) {
+        canvas.removeEventListener("touchstart", handleTouchStart);
+        canvas.removeEventListener("touchmove", handleTouchMove);
+        canvas.removeEventListener("touchend", handleTouchEnd);
+      }
       if (animationFrameRef.current !== null) {
         window.cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
       }
     };
   }, [playerId, roomId]);
@@ -395,15 +589,22 @@ export default function Game() {
               </div>
             )}
           </div>
+          <div className="text-sm">
+            {currentPlayer && <div>You are: {currentPlayer}</div>}
+          </div>
         </div>
 
         <canvas
           ref={canvasRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
-          className="border border-gray-600 bg-black"
+          className="border border-gray-600 bg-black focus:outline-none touch-none"
           tabIndex={0}
         />
+
+        <div className="mt-4 text-center text-sm text-gray-400">
+          Use arrow keys or touch/drag to control your paddle
+        </div>
 
         <div className="mt-4 text-center">
           {!gameState?.is_active && (
