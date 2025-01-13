@@ -132,6 +132,9 @@ async def game_loop(room_id: str):
         
         await asyncio.sleep(1/60)  # 60 FPS
 
+        @app.get("/")
+        async def home():
+            return {"message": "Server is live"}
 @app.websocket("/ws/{room_id}/{player_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str):
     await websocket.accept()
