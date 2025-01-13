@@ -11,7 +11,7 @@ app = FastAPI()
 # Enable CORS for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # NextJS default port
+    allow_origins=["http://localhost:3000", "https://ping-pong-ten-psi.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
