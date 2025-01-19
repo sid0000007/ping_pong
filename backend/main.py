@@ -132,9 +132,7 @@ async def game_loop(room_id: str):
         
         await asyncio.sleep(1/60)  # 60 FPS
 
-        @app.get("/home")
-        async def home():
-            return {"message": "Server is live"}
+        
 @app.websocket("/ws/{room_id}/{player_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str):
     await websocket.accept()
@@ -198,3 +196,9 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, player_id: str)
 @app.on_event("startup")
 async def startup_event():
     pass  # We'll handle game loop creation when rooms are created
+
+@app.get("/")
+async def health_check():
+    return {"status": "Server is live", "message": "Ping Pong game server is running"}
+
+                
